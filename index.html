@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anki Note Converter</title>
+    
+    <!-- We include the JSZip library from a CDN to create the .zip file -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        :root {
+            --bg-body: #f0f2f5;
+            --bg-card: #ffffff;
+            --text-primary: #1a202c;
+            --text-secondary: #718096;
+            --accent-primary: #1a202c; /* The dark button color */
+            --border-color: #e2e8f0;
+            --radius: 16px;
+            --shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 1.5rem 1rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+        }
+        
+        /* Updated: Control card specific styles */
+        .controls-card {
+             padding-top: 1.25rem;
+             padding-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
+        }
+
+        #deckName {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            background-color: #f8fafc;
+            color: var(--text-primary);
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        #deckName:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 2px rgba(26, 32, 44, 0.2);
+        }
+
+        #processButton {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.85rem 1.5rem;
+            margin-top: 1.25rem;
+            border: none;
+            background-color: var(--accent-primary);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        
+        #processButton:hover {
+            background-color: #333;
+        }
+
+        #processButton:disabled {
+            background-color: var(--text-secondary);
+            cursor: not-allowed;
+        }
+        
+        #processButton .icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        #flashcardsData {
+            width: 100%;
+            height: 50vh; /* Increased height slightly */
+            min-height: 250px;
+            box-sizing: border-box;
+            background-color: var(--bg-card);
+            border: none;
+            color: var(--text-secondary);
+            font-family: "Courier New", Courier, monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            resize: vertical;
+        }
+        
+        #flashcardsData:focus {
+            outline: none;
+            color: var(--text-primary);
+        }
+        
+        #flashcardsData::placeholder {
+            color: #a0aec0;
+            opacity: 1; /* Firefox */
+        }
+
+        #status .status-message {
+            font-size: 0.9rem;
+            font-weight: 500;
+            padding: 0.2rem 0;
+            color: var(--text-secondary);
+        }
+        #status .status-message.success {
+            color: #276749; /* A nice green */
+        }
+        #status .status-message.error {
+            color: #c53030; /* A nice red */
+        }
+    </style>
+</head>
+<body>
+
+    <main class="app-container">
+        
+        <!-- The Textarea is now the first element -->
+        <div class="card">
+            <textarea id="flashcardsData" placeholder="1. Paste your flashcard data here...
+
+=== BASIC CARDS FOR IMPORT ===
+...
+
+=== BIDIRECTIONAL CARDS FOR IMPORT ===
+...
+
+=== CLOZE CARDS FOR IMPORT ===
+...
+
+// ANKI IMPORT COMPLETE //
+"></textarea>
+        </div>
+
+        <!-- The Controls are now the second element -->
+        <div class="card controls-card">
+            <label for="deckName">2. Enter File Name Prefix</label>
+            <input type="text" id="deckName" placeholder="e.g., IndusValleyCivilization">
+            
+            <button id="processButton">
+                <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                <span>3. Process & Download (.zip)</span>
+            </button>
+            
+            <div id="status" style="margin-top: 1rem;"></div>
+        </div>
+
+    </main>
+
+    <script>
+        const processButton = document.getElementById('processButton');
+        const dataInput = document.getElementById('flashcardsData');
+        const nameInput = document.getElementById('deckName');
+        const statusDiv = document.getElementById('status');
+
+        const HEADERS = {
+            BASIC: '=== BASIC CARDS FOR IMPORT ===',
+            BIDIRECTIONAL: '=== BIDIRECTIONAL CARDS FOR IMPORT ===',
+            CLOZE: '=== CLOZE CARDS FOR IMPORT ===',
+            END: '// ANKI IMPORT COMPLETE //'
+        };
+
+        processButton.addEventListener('click', async () => {
+            processButton.disabled = true;
+            processButton.querySelector('span').textContent = 'Processing...';
+            statusDiv.innerHTML = '';
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            try {
+                const rawText = dataInput.value;
+                
+                // --- MODIFICATION START ---
+                // Remove all double asterisks (**) used for bolding from the text.
+                const cleanedText = rawText.replace(/\*\*/g, '');
+                // --- MODIFICATION END ---
+
+                const deckName = nameInput.value.trim() || 'AnkiDeck';
+                let filesGenerated = 0;
+
+                if (!cleanedText.trim()) {
+                    logStatus('Input data is empty. Please paste your notes.', 'error');
+                    return;
+                }
+
+                const zip = new JSZip();
+
+                const sections = [
+                    { type: 'BASIC', start: HEADERS.BASIC, end: HEADERS.BIDIRECTIONAL },
+                    { type: 'BIDIRECTIONAL', start: HEADERS.BIDIRECTIONAL, end: HEADERS.CLOZE },
+                    { type: 'CLOZE', start: HEADERS.CLOZE, end: HEADERS.END }
+                ];
+
+                for (const section of sections) {
+                    // Use the cleanedText to extract content
+                    const content = extractSectionContent(cleanedText, section.start, section.end);
+                    if (content) {
+                        const filename = `${deckName}_${section.type} CARDS.txt`;
+                        zip.file(filename, content);
+                        logStatus(`Added: ${filename}`, 'info');
+                        filesGenerated++;
+                    }
+                }
+
+                if (filesGenerated > 0) {
+                    const zipBlob = await zip.generateAsync({ type: "blob" });
+                    triggerDownload(zipBlob, `${deckName}.zip`);
+                    logStatus(`Success! ${deckName}.zip generated.`, 'success');
+                } else {
+                    logStatus('Could not find any recognizable card sections.', 'error');
+                }
+
+            } catch (error) {
+                console.error('An unexpected error occurred:', error);
+                logStatus('An unexpected error occurred. See console for details.', 'error');
+            } finally {
+                processButton.disabled = false;
+                processButton.querySelector('span').textContent = '3. Process & Download (.zip)';
+            }
+        });
+
+        function extractSectionContent(fullText, startMarker, endMarker) {
+            const startIndex = fullText.indexOf(startMarker);
+            if (startIndex === -1) return null;
+
+            const contentStartIndex = startIndex + startMarker.length;
+            let endIndex = fullText.indexOf(endMarker, contentStartIndex);
+            if (endIndex === -1) endIndex = fullText.length;
+
+            const sectionText = fullText.slice(contentStartIndex, endIndex);
+            const filteredLines = sectionText.split('\n').filter(line => line.trim() !== '');
+            
+            return filteredLines.length > 0 ? filteredLines.join('\n') : null;
+        }
+
+        function triggerDownload(blob, filename) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        }
+        
+        function logStatus(message, type = 'info') {
+            const p = document.createElement('p');
+            p.textContent = message;
+            p.className = `status-message ${type}`;
+            statusDiv.appendChild(p);
+        }
+    </script>
+</body>
+</html>
