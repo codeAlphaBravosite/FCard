@@ -1,12 +1,12 @@
 {
-  "name": "StoryboardPro",
-  "short_name": "StoryboardPro",
-  "description": "A powerful storyboarding app",
+  "name": "Convert2Anki",
+  "short_name": "Convert2Anki",
+  "description": "Convert2Anki",
   "start_url": "./index.html",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#f8fafc",
+  "background_color": "#f0f2f5",
+  "theme_color": "#1a202c",
   "orientation": "natural",
   "categories": ["productivity", "utilities"],
   "icons": [
